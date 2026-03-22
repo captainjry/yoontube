@@ -1,60 +1,33 @@
-import React from 'react'
+// src/app/page.tsx
+import { Suspense } from 'react'
+import { listMedia } from '@/lib/queries'
+import { MediaGrid } from '@/components/media-grid'
+import { FilterTabs, type MediaFilter } from '@/components/filter-tabs'
+import { SortSelect, type SortOption } from '@/components/sort-select'
 
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
-
-import { LibraryShell } from '../components/library-shell'
-import {
-  BackendUnauthorizedError,
-  getMediaIndexFromBackend,
-  isBackendUnauthorizedError,
-  SESSION_COOKIE_NAME,
-} from '../lib/backend'
-import type { MediaFilter, MediaItem } from '../lib/types'
-
-type HomePageProps = {
-  searchParams?: Promise<{
-    filter?: string
-  }>
+type HomeProps = {
+  searchParams: Promise<{ filter?: string; sort?: string; page?: string }>
 }
 
-function normalizeFilter(filter: string | undefined): MediaFilter {
-  if (filter === 'videos' || filter === 'photos') {
-    return filter
-  }
+export default async function HomePage({ searchParams }: HomeProps) {
+  const params = await searchParams
+  const filter = (params.filter as MediaFilter) ?? 'all'
+  const sort = (params.sort as SortOption) ?? 'date'
+  const page = Number(params.page) || 1
 
-  return 'all'
-}
+  const { items, hasMore, nextPage } = await listMedia({ filter, sort, page })
 
-function filterItems(items: MediaItem[], filter: MediaFilter) {
-  if (filter === 'videos') {
-    return items.filter((item) => item.kind === 'video')
-  }
-
-  if (filter === 'photos') {
-    return items.filter((item) => item.kind === 'photo')
-  }
-
-  return items
-}
-
-export default async function HomePage({ searchParams }: HomePageProps) {
-  const resolvedSearchParams = searchParams ? await searchParams : {}
-  const activeFilter = normalizeFilter(resolvedSearchParams.filter)
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)
-  const sessionCookieHeader = sessionCookie ? `${sessionCookie.name}=${sessionCookie.value}` : undefined
-
-  try {
-    const items = await getMediaIndexFromBackend(sessionCookieHeader)
-
-    return <LibraryShell activeFilter={activeFilter} items={filterItems(items, activeFilter)} />
-  } catch (error) {
-    if (error instanceof BackendUnauthorizedError || isBackendUnauthorizedError(error)) {
-      redirect('/login')
-      return null
-    }
-
-    throw error
-  }
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <Suspense>
+          <FilterTabs />
+        </Suspense>
+        <Suspense>
+          <SortSelect />
+        </Suspense>
+      </div>
+      <MediaGrid items={items} hasMore={hasMore} nextPage={nextPage} />
+    </div>
+  )
 }
