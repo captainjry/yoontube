@@ -1,44 +1,34 @@
-'use client'
-
-import React, { useState } from 'react'
-
-import type { MediaItem } from '../lib/types'
+import type { Media } from '@/lib/supabase/types'
 import { MediaCard } from './media-card'
+import { LoadMoreButton } from './load-more-button'
 
 type MediaGridProps = {
-  items: MediaItem[]
-  isGalleryLayout: boolean
-  pageSize?: number
+  items: Media[]
+  hasMore: boolean
+  nextPage: number
 }
 
-const DEFAULT_PAGE_SIZE = 48
-
-export function MediaGrid({ items, isGalleryLayout, pageSize = DEFAULT_PAGE_SIZE }: MediaGridProps) {
-  const [visibleCount, setVisibleCount] = useState(pageSize)
-
-  const visibleItems = items.slice(0, visibleCount)
-  const hasMore = visibleCount < items.length
-  const remaining = items.length - visibleCount
+export function MediaGrid({ items, hasMore, nextPage }: MediaGridProps) {
+  if (items.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-20 text-muted-foreground">
+        No media found
+      </div>
+    )
+  }
 
   return (
-    <>
-      <div className={`stagger-grid ${isGalleryLayout ? 'media-grid--gallery' : 'media-grid'}`}>
-        {visibleItems.map((item) => (
-          <MediaCard key={item.id} item={item} isGalleryLayout={isGalleryLayout} />
+    <div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {items.map((item) => (
+          <MediaCard key={item.id} item={item} />
         ))}
       </div>
-
       {hasMore && (
-        <div className="load-more">
-          <button
-            type="button"
-            className="load-more__button"
-            onClick={() => setVisibleCount((prev) => prev + pageSize)}
-          >
-            Load more ({remaining} remaining)
-          </button>
+        <div className="flex justify-center py-8">
+          <LoadMoreButton nextPage={nextPage} />
         </div>
       )}
-    </>
+    </div>
   )
 }

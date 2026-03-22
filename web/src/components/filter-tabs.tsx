@@ -1,36 +1,40 @@
-import React from 'react'
-import Link from 'next/link'
+'use client'
 
-import type { MediaFilter } from '../lib/types'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-type FilterTabsProps = {
-  activeFilter: MediaFilter
-}
+const FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'videos', label: 'Videos' },
+  { value: 'photos', label: 'Photos' },
+] as const
 
-const FILTERS: Array<{ label: string; value: MediaFilter }> = [
-  { label: 'All', value: 'all' },
-  { label: 'Videos', value: 'videos' },
-  { label: 'Photos', value: 'photos' },
-]
+export type MediaFilter = (typeof FILTERS)[number]['value']
 
-export function FilterTabs({ activeFilter }: FilterTabsProps) {
+export function FilterTabs() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const current = (searchParams.get('filter') as MediaFilter) ?? 'all'
+
+  function handleChange(value: string) {
+    const params = new URLSearchParams(searchParams.toString())
+    if (value === 'all') {
+      params.delete('filter')
+    } else {
+      params.set('filter', value)
+    }
+    params.delete('page')
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
   return (
-    <nav aria-label="Media filters" className="filter-nav">
-      {FILTERS.map((filter) => {
-        const href = filter.value === 'all' ? '/' : `/?filter=${filter.value}`
-        const isActive = filter.value === activeFilter
-
-        return (
-          <Link
-            key={filter.value}
-            href={href}
-            aria-current={isActive ? 'page' : undefined}
-            className={`filter-pill ${isActive ? 'filter-pill--active' : 'filter-pill--inactive'}`}
-          >
-            {filter.label}
-          </Link>
-        )
-      })}
-    </nav>
+    <Tabs value={current} onValueChange={handleChange}>
+      <TabsList>
+        {FILTERS.map((f) => (
+          <TabsTrigger key={f.value} value={f.value}>{f.label}</TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }
