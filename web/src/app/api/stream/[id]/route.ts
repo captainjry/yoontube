@@ -1,52 +1,44 @@
 import { NextRequest } from 'next/server'
+import { getDriveFileStream, extractProxyHeaders } from '@/lib/drive'
+import { verifySessionToken, getSessionSecret, SESSION_COOKIE_NAME } from '@/lib/auth'
 
-import { getBackendBaseUrl, SESSION_COOKIE_NAME } from '../../../../lib/backend'
-
-const PROXIED_HEADER_NAMES = ['accept-ranges', 'cache-control', 'content-length', 'content-range', 'content-type']
-
-type RouteContext = {
-  params: Promise<{
-    id: string
-  }>
-}
+type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(request: NextRequest, context: RouteContext) {
   const { id } = await context.params
-  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)
-  const headers = new Headers()
-  const range = request.headers.get('range')
 
-  if (sessionCookie) {
-    headers.set('cookie', `${SESSION_COOKIE_NAME}=${sessionCookie.value}`)
+  const session = request.cookies.get(SESSION_COOKIE_NAME)
+  if (!session?.value || !verifySessionToken(session.value, getSessionSecret())) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (range) {
-    headers.set('range', range)
-  }
-
-  let response: Response
+  const range = request.headers.get('range') ?? undefined
 
   try {
-    response = await fetch(`${getBackendBaseUrl()}/stream/${encodeURIComponent(id)}`, {
-      headers,
-      cache: 'no-store',
-    })
-  } catch {
-    return Response.json({ error: 'Unable to reach stream service' }, { status: 502 })
-  }
+    const { status, headers: rawHeaders, data } = await getDriveFileStream(id, range)
 
-  const proxiedHeaders = new Headers()
+    const responseHeaders = new Headers()
+    const headerEntries = rawHeaders instanceof Headers
+      ? rawHeaders
+      : new Headers(rawHeaders as Record<string, string>)
 
-  for (const name of PROXIED_HEADER_NAMES) {
-    const value = response.headers.get(name)
-
-    if (value) {
-      proxiedHeaders.set(name, value)
+    for (const [key, value] of headerEntries.entries()) {
+      responseHeaders.set(key, value)
     }
-  }
 
-  return new Response(response.body, {
-    status: response.status,
-    headers: proxiedHeaders,
-  })
+    const proxied = extractProxyHeaders(responseHeaders)
+
+    // Convert Node readable stream to web ReadableStream
+    const webStream = new ReadableStream({
+      start(controller) {
+        data.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)))
+        data.on('end', () => controller.close())
+        data.on('error', (err: Error) => controller.error(err))
+      },
+    })
+
+    return new Response(webStream, { status, headers: proxied })
+  } catch {
+    return Response.json({ error: 'Stream unavailable' }, { status: 502 })
+  }
 }
