@@ -1,20 +1,48 @@
+// src/middleware.ts
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { SESSION_COOKIE_NAME } from './lib/constants'
 
-import { SESSION_COOKIE_NAME } from './lib/backend'
+const PUBLIC_PATHS = ['/login']
+const PAYLOAD = 'yoontube-authenticated'
 
-const PUBLIC_FILE_PATH = /\/[^/]+\.[^/]+$/
+async function verifyTokenEdge(token: string): Promise<boolean> {
+  const secret = process.env.SESSION_SECRET
+  if (!secret || !token) return false
 
-export function isPublicPath(pathname: string) {
-  return pathname === '/login' || pathname.startsWith('/login/') || PUBLIC_FILE_PATH.test(pathname)
+  try {
+    const encoder = new TextEncoder()
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    )
+    const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(PAYLOAD))
+    const expected = Array.from(new Uint8Array(sig))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+    return token === expected
+  } catch {
+    return false
+  }
 }
 
-export function middleware(request: NextRequest) {
-  if (isPublicPath(request.nextUrl.pathname)) {
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
     return NextResponse.next()
   }
 
-  if (request.cookies.has(SESSION_COOKIE_NAME)) {
+  // Allow static files
+  if (pathname.includes('.')) {
+    return NextResponse.next()
+  }
+
+  const session = request.cookies.get(SESSION_COOKIE_NAME)
+  if (session?.value && (await verifyTokenEdge(session.value))) {
     return NextResponse.next()
   }
 
@@ -22,5 +50,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|.*\\..*).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }

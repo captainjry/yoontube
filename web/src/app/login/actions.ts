@@ -2,29 +2,31 @@
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { createSessionToken, getSessionSecret, getSharedPassword, SESSION_COOKIE_NAME } from '@/lib/auth'
 
-import { FRONTEND_SESSION_COOKIE_OPTIONS, verifyPasswordWithBackend } from '../../lib/backend'
-import type { LoginState } from '../../lib/types'
+export type LoginState = { error: string | null }
 
-export async function submitPassword(_previousState: LoginState, formData: FormData): Promise<LoginState> {
+export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const password = formData.get('password')
 
-  if (typeof password !== 'string' || password.trim().length === 0) {
-    return {
-      error: 'Password is required',
-    }
+  if (typeof password !== 'string' || !password) {
+    return { error: 'Password is required' }
   }
 
-  const result = await verifyPasswordWithBackend(password)
-
-  if (!result.ok) {
-    return {
-      error: result.error,
-    }
+  if (password !== getSharedPassword()) {
+    return { error: 'Incorrect password' }
   }
 
+  const token = createSessionToken(getSessionSecret())
   const cookieStore = await cookies()
-  cookieStore.set(result.cookie.name, result.cookie.value, FRONTEND_SESSION_COOKIE_OPTIONS)
+
+  cookieStore.set(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 30, // 30 days
+  })
 
   redirect('/')
 }
