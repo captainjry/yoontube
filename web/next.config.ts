@@ -1,7 +1,10 @@
 import type { NextConfig } from 'next'
+import { resolve } from 'path'
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: resolve(__dirname),
   transpilePackages: ['@vidstack/react'],
+  serverExternalPackages: ['@supabase/supabase-js', '@supabase/ssr'],
   images: {
     remotePatterns: [
       {
