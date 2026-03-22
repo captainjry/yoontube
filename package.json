@@ -1,12 +1,10 @@
 {
   "name": "yoontube",
   "private": true,
-  "workspaces": [
-    "web",
-    "backend"
-  ],
   "scripts": {
-    "test:backend": "npm --workspace backend test",
-    "test:web": "npm --workspace web test"
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "test": "npm --prefix web run test",
+    "sync": "npx tsx scripts/sync.ts"
   }
 }

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ITEMS_PER_PAGE } from '@/lib/constants'
 import type { SortOption } from '@/components/sort-select'
 import type { MediaFilter } from '@/components/filter-tabs'
+import type { Folder, Media } from '@/lib/supabase/types'
 
 type ListMediaParams = {
   filter?: MediaFilter
@@ -41,7 +42,7 @@ export async function listMedia({ filter, sort = 'date', page = 1, folderId, sea
   if (error) throw error
 
   return {
-    items: data ?? [],
+    items: (data ?? []) as Media[],
     total: count ?? 0,
     hasMore: (count ?? 0) > to,
     nextPage: page + 1,
@@ -74,7 +75,7 @@ export async function getMediaById(id: string): Promise<MediaWithFolder> {
   return data as MediaWithFolder
 }
 
-export async function listFolders(parentId: string | null) {
+export async function listFolders(parentId: string | null): Promise<Folder[]> {
   const supabase = await createClient()
 
   let query = supabase.from('folders').select('*').order('name')
@@ -87,10 +88,10 @@ export async function listFolders(parentId: string | null) {
 
   const { data, error } = await query
   if (error) throw error
-  return data ?? []
+  return (data ?? []) as Folder[]
 }
 
-export async function getFolderByPath(pathSegments: string[]) {
+export async function getFolderByPath(pathSegments: string[]): Promise<Folder | null> {
   const supabase = await createClient()
   const path = pathSegments.join('/')
 
@@ -101,7 +102,7 @@ export async function getFolderByPath(pathSegments: string[]) {
     .single()
 
   if (error) return null
-  return data
+  return data as Folder
 }
 
 export async function getSyncStatus() {
@@ -111,7 +112,7 @@ export async function getSyncStatus() {
     .select('synced_at')
     .order('synced_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
-  return data?.synced_at ?? null
+  return (data as { synced_at: string } | null)?.synced_at ?? null
 }
