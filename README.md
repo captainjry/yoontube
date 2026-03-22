@@ -1,48 +1,57 @@
 # Yoontube
 
-Yoontube is a private Drive media library with a Next.js frontend on Vercel and a Fastify backend on an Oracle VM. The web app proxies browser playback requests through Next route handlers, while the backend serves auth, media metadata, and stream endpoints backed by a JSON index generated from Google Drive.
+Private media gallery for streaming Google Drive-hosted videos and photos through a proper web UI. Built for a small group of friends who need 4K MP4 playback, fast browsing, and a YouTube-like experience that Google Drive can't provide.
 
 ## Architecture
 
-- `web/` is the user-facing Next.js app.
-- `backend/` is the Fastify service that reads `backend/data/media-index.json` and talks to Google Drive.
-- A scheduled sync job refreshes the backend media index by running `npm run sync` on the Oracle host.
+Single Next.js 15 app on Vercel with two external services:
 
-## Backend deployment on Oracle VM
+- **Supabase** — Postgres database for media metadata, folder structure, and thumbnail storage
+- **Google Drive API** — source of truth for files, called during sync and streaming
 
-1. Copy the repo to `/opt/yoontube` on the VM and install dependencies with `npm install`.
-2. Create `backend/.env` from `backend/.env.example` and set the Drive credentials, root folder id, shared password, and `PORT`.
-3. Start the backend with PM2 from `backend/` using `pm2 start ecosystem.config.cjs`.
-4. Put Nginx or another reverse proxy in front of the backend and expose only the proxy publicly.
+No long-running backend server. The V1 Fastify backend and Oracle VM deployment have been replaced.
 
-The PM2 config in `backend/ecosystem.config.cjs` assumes the backend lives at `/opt/yoontube/backend` and starts it with `npm run start`.
+## Tech Stack
 
-## Sync cron job
+- Next.js 15 (App Router, server components, route handlers)
+- Tailwind CSS v4 + shadcn/ui
+- Vidstack (video player)
+- Supabase (Postgres + Storage)
+- Google Drive API (googleapis)
+- TypeScript
+- GitHub Actions (sync + keepalive)
 
-Use the wrapper script as the canonical cron entrypoint on the Oracle host:
+## Setup
 
-```cron
-*/15 * * * * /opt/yoontube/backend/scripts/run-sync-cron.sh >> /var/log/yoontube-sync.log 2>&1
-```
+1. Create a Supabase project and run the migration in `supabase/migrations/001_initial_schema.sql`
+2. Create a public storage bucket called `thumbnails` in Supabase
+3. Copy `web/.env.local.example` to `web/.env.local` and fill in the values
+4. Install dependencies: `cd web && npm install`
+5. Run dev server: `npm run dev`
 
-`backend/scripts/run-sync-cron.sh` changes into the backend directory, adds common system Node paths for cron, attempts to load `nvm` from `~/.nvm` if needed, and then runs `npm run sync`.
+## Environment Variables
 
-## Web deployment on Vercel
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase anon/public key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (sync only) |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Google Drive service account email |
+| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Google Drive service account private key |
+| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | Root folder ID in Google Drive |
+| `SHARED_PASSWORD` | Password for login |
+| `SESSION_SECRET` | Secret for signing session cookies (32+ chars) |
 
-1. Create a Vercel project rooted at `web/`.
-2. Set `BACKEND_BASE_URL` to the public Oracle VM proxy origin, for example `https://media.example.com`, not an internal hostname.
-3. Verify that URL before or after deploy with `curl "$BACKEND_BASE_URL/health"` and confirm the backend responds successfully.
-4. Deploy normally with the Next.js defaults from `web/vercel.json`.
+## Sync
 
-The frontend keeps auth and media requests inside the Next app, then proxies backend stream access through `web/src/app/api/stream/[id]/route.ts`.
+Media metadata is synced from Google Drive to Supabase via a GitHub Actions workflow:
 
-## Verification Checklist
+1. Go to Actions tab → "Sync Drive to Supabase" → "Run workflow"
+2. The workflow crawls Drive, upserts folders/media into Supabase, and uploads thumbnails to Supabase Storage
+3. A separate keepalive workflow pings Supabase every 3 days to prevent free-tier pausing
 
-- Confirm signing in with the wrong password returns `401`.
-- Confirm signing in with the right password opens the library.
-- Confirm nested folders show the expected folder context/path in the library UI.
-- Confirm `mp4` playback can seek correctly in the browser.
-- Confirm browser-playable photos render in the photo view.
-- Confirm `cr2` files open through the Drive preview fallback.
-- Confirm `heic` files use the fallback behavior.
-- Confirm the sync job regenerates `backend/data/media-index.json`.
+## Deployment
+
+- **Frontend**: Vercel (hobby tier) — deploy from GitHub
+- **Database**: Supabase (free tier) — 500 MB Postgres, 1 GB storage
+- **Sync**: GitHub Actions — manual trigger via `workflow_dispatch`
