@@ -1,5 +1,8 @@
 -- supabase/migrations/001_initial_schema.sql
 
+-- Extensions
+create extension if not exists pg_trgm with schema extensions;
+
 -- Folders table
 create table folders (
   id text primary key,              -- Google Drive folder ID
@@ -31,4 +34,4 @@ create index idx_media_name on media(name);
 create index idx_media_created_at on media(created_at desc);
 
 -- Full-text search on media name
-create index idx_media_name_trgm on media using gin (name gin_trgm_ops);
+create index idx_media_name_trgm on media using gin (name extensions.gin_trgm_ops);
